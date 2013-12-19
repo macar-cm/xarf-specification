@@ -1,27 +1,41 @@
-# X-ARF Specification *v0.3-draft01*
+# X-ARF Specification *v0.3-draft02*
 
 This is a short specification for X-ARF (Extended Abuse Reporting Format). 
 If you are interested in joining us and/or also start reporting in X-ARF or you think that you might have some valuable ideas, feel that there's still things missing etc., let us know. We are happy to get as much feedback as possible. 
 
 ## The idea of X-ARF
 
-X-ARF is a format to report different types of network abuse incidents to network owners and other involved parties.
+X-ARF is a format to report different types of network abuse incidents to network owners and other involved parties. It is designed as a pure container format capable of reporting different kinds of abuse.
 
-X-ARF is designed as a pure container format, where everyone can plug in as many specific containers as he wants to. The content of such containers can be completely different from others. The container itself will be defined in schemes. These schemes contain all information about the meaning of each listed field (mandatory, optional, data type, allowed values,...). To make it easy to read the content of an X-ARF report (just like [MARF](http://www.rfc-editor.org/rfc/rfc5965.txt)) the information is represented in [YAML](http://en.wikipedia.org/wiki/YAML). The schemes themselves are defined in JSON Schema [draft02](http://tools.ietf.org/html/draft-zyp-json-schema-02) (please notice!).
+Reports are composed of two or more parts encapsulated using MIME. The first part is a human-readable description of the incident. The second contains structured data intended for machine parsing. The third and subsequent parts contain any relevant evidence.
 
-To make sure everybody can understand all available schemes, this community has been established. This community discusses e.g. new containers and additional information for existing containers. Mostly all members of the community also use X-ARF for real-life reporting and abuse handling. Publicly available schemes are versioned and published on [x-arf.org](http://www.x-arf.org/schemata.html) and in a github [repository](https://github.com/abusix/xarf-schemata). That way every parser is able to validate against the latest X-ARF scheme and thus is able to handle it.
+Like [MARF](http://www.rfc-editor.org/rfc/rfc5965.txt), the information in the second part of an X-ARF report is represented in [YAML](http://en.wikipedia.org/wiki/YAML). Each report type must define a JSON Schema [draft02](http://tools.ietf.org/html/draft-zyp-json-schema-02) (please notice!) for the YAML data so that a report can be validated. This is the _report type schema_. Along with the schema, a report type will usually need a document which describes the semantics of the fields described in the schema, specifies the evidence provided in the third and subsequent MIME parts and which are optional or mandatory, provides examples, explains the intent of each field, etc. This is the _report type guide_.
+
+To make sure everybody can understand all available report types, this community has been established. This community discusses e.g. new report types and additional information for existing report types. Most members of the community are also active users of X-ARF for reporting and abuse handling. Publically available schemes are versioned and published on [x-arf.org](http://www.x-arf.org/schemata.html) and in a github [repository](https://github.com/abusix/xarf-schemata). That way every parser is able to validate against the latest X-ARF scheme and thus is able to handle it.
   
-Please notice that the status of this document still is in development. If you want to start reporting in X-ARF, feel free to join the X-ARF [mailinglist](http://lists.x-arf.org/cgi-bin/mailman/listinfo/) as well.
+Please notice that this document is still in development. If you want to start reporting in X-ARF, feel free to join the X-ARF [mailinglist](http://lists.x-arf.org/cgi-bin/mailman/listinfo/) as well.
+
+## Transport
+
+This specification does not cover transport of X-ARF. X-ARF can easily be transported over SMTP, HTTP, or other protocols capable of file transfer. 
+
+A transport description should specify if and how multiple X-ARF reports can be bundled together.
+
+## Security
+
+Earlier versions defined a "secure" report, which was simply an X-ARF report encapsulated in an S/MIME or PGP/MIME message. What's the goal of "security"? Is it encryption during transport of the message? Is it authentication of the report sender? Is it to detect tampering with the report?
+
+But in general, security should be provided by the transport, not by X-ARF itself.
 
 ## Identities in X-ARF
 
-Identities in X-ARF are expressed as URIs, for the sake of maximum flexibility. These schemes are allowed: 
+Identities in X-ARF should be expressed as URIs, for maximum flexibility. These URIs must express the _identity_ of the user or entity (e.g. a service) which produced the report. Individual report types must define which kinds of URIs are acceptable and may place restrictions on them.
 
-* `mailto` (RFC6068)
-* `sip`/`sips` (RFC3261)
-* `tel` (RFC3966)
+For example,
 
-These URIs must express the _identity_ of the user or entity (e.g. a service) which produced the report.
+* `mailto` (RFC6068) - in the fraud schema
+* `sip`/`sips` (RFC3261) - in the RCS report schema
+* `tel` (RFC3966) - in the RCS report schema
 
 These restrictions are placed on each scheme:
 
@@ -39,7 +53,187 @@ These restrictions are placed on each scheme:
 
 `tel` URIs MUST be global numbers prefixed with "+" as described in RFC 3966 section 5.1.4. The telephone-subscriber portion MUST NOT contain visual-separator characters. They SHOULD NOT contain parameters.
 
+## Overview of an X-ARF Report
+
+One X-ARF report corresponds to an incident of abuse. In some cases, an "incident" may include many individual events - for example, an attack attempting to brute-force a login may include many thousands of connections and login attempts. A report type guide should provide guidelines for whether and how to collect events into one report.
+
+An X-ARF transport protocol should define headers so that software can recognize X-ARF reports, along with other appropriate information. For example, an SMTP transport should specify use of the Auto-Submitted header.
+
+An X-ARF report is composed of multiple parts, encapsulated using MIME. Note that the MIME header fields report will usually be included in the transport headers, i.e. when transported over SMTP, the Content-Type header field will be in the email headers. A "bare" X-ARF report should include the MIME header fields necessary to parse the report before the body parts.
+
+An X-ARF report has content-type multipart/mixed. It must contain at least two MIME parts:
+
+### 1st MIME part
+* Human readable text which contains at least basic information about the reported incident
+* <code>Content-Type: text/plain</code>
+* <code>charset=utf-8</code>
+* MUST be present
+
+### 2nd MIME part
+* The data is a JSON object (a list of key/value pairs) represented in [YAML](http://www.yaml.org) notation. See [Common keys and their semantics](#common-keys-and-their-semantics) for more information.
+* Receivers must be able to validate against the provided JSON scheme (see [X-ARF tools](http://www.x-arf.org/tools.html)).
+* Machine- and human-readable
+* <code>Content-Type: text/plain</code>
+* <code>charset=utf-8</code>
+* <code>name="report.txt"</code>
+* MUST be present
+
+It may contain additonal MIME parts:
+
+### 3rd and additional MIME parts
+* Of any MIME types (which are specified in a referenced scheme)
+* Contains e.g. evidence which may be anonymized
+* Of any content
+* Optional or mandatory as defined in the corresponding report type schema and guide
+
+## Common YAML keys and their semantics
+
+##### Schema-URL: 
+
+All schemata must require one instance of this key.
+
+This key is used to identify the report type. It contains the URI to the JSON-schema that describes the content of the report. The schema must be published under and the URI must point to the www.x-arf.org domain.
+
+* Example: <code>Schema-URL: http://www.x-arf.org/schema/abuse_login-attack_0.1.2.json</code>
+
+##### Version:
+
+All schemata must require one instance of this key.
+
+This field contains the version of this specification.  
+
+*The current version number is 0.3*
+
+* Example: <code>Version: 0.3</code> 
+
+##### Reported-From:
+
+All schemata should require one instance of this key.
+
+This field contains the sender's identity, expressed as a URI.
+
+* Examples:
+** `Reported-From: mailto:reporter@example.com`
+** `Reported-From: tel:+15551234`
+** `Reported-Fro: sip:user@example.com`
+
+##### User-Agent:
+
+All schemata should require one instance of this key.
+
+Name and version of the generating software (see RFC1945 and RFC2068) 
+
+* Example: <code>User-Agent: xarf-reporter/1.0 (X-ARF Reporting Toolset v1.0)</code>
+
+##### Report-ID:
+
+All schemata must require one instance of this key.
+
+The intent is that if a report is sent to multiple recipients - e.g. several different contact addresses at one ISP - they can be deduplicated. Thus the Report-ID for a report containing (one) specific incident(s) should be unique across time and space.
+
+The Report-ID SHOULD have a reasonable domain part. In some contexts, such as mobile messaging, there will not be an obvious domain name to use. In that case, the home network domain name (3GPP TS 23.003) SHOULD be used as the domain part.
+
+* It is recommended to use a combination of a (compact) UUID and your domain: <code>[any unique ID]@yourdomain.tld</code> 
+* Example: `Report-ID: e9e1fd60c855012f30ab60c5470a79c4@yourdomain.tld`
+
+##### Incident-Date:
+
+All schemata should recommend no more than one instance of this key.
+
+This field contains the date of the incident itself, as best can be determined. The date should be in RFC 3339 format - if the x-arf schema specifies the date with "format":"date-time". Due to compatibility reasons the date may be written in the RFC2822 format, no matter if "format":"date-time" is used or not in a x-arf schema description. Therefore, parser implementations should check which of the both formats is used. 
+
+* Example (RFC2822 format): <code>Incident-Date: Mon, 05 Aug 2012 16:19:15 -0000</code> 
+* Example (RFC3339 format): <code>Incident-Date: 2012-04-12T23:20:50.52Z</code> 
+
+##### Report-Date:
+
+All schemata should recommend no more than one instance of this key.
+
+This field contains the date when the report was generated. The date should be in RFC 3339 format - if the x-arf schema specifies the date with "format":"date-time". Due to compatibility reasons the date may be written in the RFC2822 format, no matter if "format":"date-time" is used or not in a x-arf schema description. Therefore, parser implementations should check which of the both formats is used. 
+
+* Example (RFC2822 format): <code>Report-Date: Mon, 05 Aug 2012 16:19:15 -0000</code> 
+* Example (RFC3339 format): <code>Report-Date: 2012-04-12T23:20:50.52Z</code> 
+
+##### Source:
+
+All schemata should recommend no more than one instance of this key.
+
+Contains the source of abusive behavior. This SHOULD be a URI - e.g. HTTP URL, sip, tel, or mailto URI, etc. If the source is a host or IP address, the source SHOULD be expressed as a string similar to a URI, with a "scheme" followed by an address. In this form the "scheme" MUST be "host", "ipv4", or "ipv6", followed by a colon, followed by the IP address or host name, optionally followed by a colon and port number.
+
+* Examples: 
+  * `Source: ipv4:192.168.1.134`
+  * `Source: ipv4:192.168.1.134:9876`
+  * `Source: ipv6:2001:898:2000:c:213:206:89:190`
+  * `Source: https://www.domain.tld/folder/file.xxx`
+  * `Source: host:domain.tld`
+  * `Source: mailto:localpart@domain.tld`
+  * `Source: tel:+15559876`
+
+##### TLP:
+
+Schemata may recommend no more than one instance of this key.
+
+This field may be used to indicate the sensitivity of the information in the report.
+Please see the [definition of Information Sharing Traffic Light Protocol](http://www.trusted-introducer.org/ISTLPv11.pdf).   
+ 
+* Example: <code>TLP: amber</code>   
+
+##### Attachment:
+
+Those report types that allow additional evidence must require one instance of this key. This key is an array which contains content-type descriptors for each attachment in the message, in the same order as the attachments.
+
+A report type may specify that some types are optional and some are required.
+
+For example, a report type guide may say:
+
+Reports of incidents of bad puns MUST include the pun itself an an attachment of type text/plain, and MAY include a photograph of the audience reaction as an image/jpeg or image/png.
+
+A conforming report would include this key:
+
+`Attachment: [ text/plain ] `
+
+Or:
+
+`Attachment: [ text/plain, image/jpeg ] `
+
+
+##### Category:
+
+Schemata may recommend no more than one instance of this key.
+
+If a report type can encompass different classes, categories, or kinds of incident, this should be expressed in the Category field.
+
+For example, a schema for spam messaging may list categories of "newsletter", "phishing", or "419 scam".
+
+##### Occurrences:
+
+Schemata may recommend no more than one instance of this key.
+
+In many cases, an incident will occur some number of times over some period - for example, an attacker may attempt a brute-force login attack against some server. `Occurrences` expresses how many substantially-identical instances of abuse occurred.
+
+* Example: <code>Occurrences: 6</code> 
+
+##### Incident-Lifetime:
+
+Schemata may recommend no more than one instance of this key.
+
+In many cases, an incident will occur some number of times over some period - for example, an attacker may attempt a brute-force login attack against some server. `Incident-Lifetime` expresses the time period over which the abuse occurred. It expresses an amount of time in seconds, hours, or days.
+
+* Examples:
+    * `Incident-Lifetime: 500 seconds`
+    * `Incident-Lifetime: 3 days`
+
 ## Changelog of the X-ARF specification
+### Changes from v0.3 draft01 to draft02
+* Updated "idea" description of X-ARF.
+* Define a "plain" report as MIME headers followed by the report body parts
+* Reordered sections
+* Transport is now separate from format; an X-ARF transport should also define security and bulk format.
+* Update URIs as identities to be explanatory rather than normative; the schema will specify details of URIs
+* Updated overview to remove header sections - those should be described in a transport document
+* Removed appendix A, since secure and bulk should be defined in a transport document
+* Updated appendix B to be a description of common YAML keys and semantics; report type schemata and guides should implement these
+* Renamed Appendix C to A, and updated it to illustrate only the "plain" X-ARF report
 ### Changes from v0.3 draft00 to draft01
 * Updated to use URIs instead of email addresses for reporter identity
 * Relaxed requirement for domain-name in Report-ID from "must" to "SHOULD", for enviroments where there is no obvious domain.
@@ -54,251 +248,10 @@ These restrictions are placed on each scheme:
 * Recommendation for signing X-ARF messages with DKIM unless otherwise digitally secured.
 
 
-## Overview of an X-ARF Report
-This descriptive overview is based on three chapters discussing separate X-ARF types. The `X-XARF` header value defined below provides the identifier for which X-ARF type is used.
+## Appendix A: Visualisation of X-ARF messages
 
-[Chapter 1](#chapter-1-plain-x-arf-messages) describes a single, plain X-ARF message with its header field `X-XARF: PLAIN`. [Chapter 2](#chapter-2-secure-x-arf-messages) provides the definition of signed and/or encrypted messages via S/MIME and PGP/MIME which are identified by `X-XARF: SECURE`. In [chapter 3](#chapter-3-bulk-x-arf-messages) multiple abuse reports can be transmitted in one X-ARF bulk e-mail (`X-XARF: BULK`). A visualisation of all three X-ARF types can be found as showcases in [appendix C](#appendix-c-visualisation-of-x-arf-messages).
-
-At least the plain, unencrypted, unsigned and single abuse message (`PLAIN`) must be implemented in X-ARF importers whereas types of `SECURE` and `BULK` are optional extensions. The definition of header fields in this introduction is applicable on all X-ARF messages.
-
-It is recommended to sign your X-ARF report with [DKIM](http://dkim.org/). If you want to sign and/or encrypt your X-ARF report with PGP or S/MIME end to end, follow the specification in [chapter 2](#chapter-2-secure-x-arf-messages).
-
-
-### Header
-Please add some header fields to your X-ARF reports to let parsers identify incoming reports properly. In which the X-XARF header value distinguishs
-plain from encrypted, signed or bulk reports.
-
-#### Mandatory header fields
-* `X-XARF: {PLAIN, SECURE, BULK}` in upper case according to RFC(2)822   
-  \[mandatory field, not less than `PLAIN` must be implemented\]
-* `Content-Type: {multipart/mixed, multipart/signed, multipart/encrypted, application/pkcs7-mime}`   
-  \[mandatory field, at least `multipart/mixed` must be implemented for type `PLAIN`\]
-
-#### Conditional header fields
-* `Auto-Submitted: auto-generated` according to RFC3834
-  \[mandatory field if the report is autogenerated\]
-
-#### Recommended header fields
-* <code>Subject: abuse report about *source* - *date*</code> as an easy to use and apprehensible subject line   
-  \[recommended field for plain messages transmitted via email\]
-* X-DKIM/DKIM-Signature according to RFC5585 and RFC6376 unless otherwise digitally secured (see [chapter 2](#chapter-2-secure-x-arf-messages))   
-  \[recommended fields for plain or bulk messages\]
-
-
-
-## Chapter 1: Plain X-ARF messages
-|Identifier|Scope|
-|----------|-----|
-|`X-XARF: PLAIN`|mandatory implementation|
-
-A plain X-ARF message consists of content type `multipart/mixed`. It represents a single, plain, unsigned and unencrypted abuse/incident. This report type must be supported. It is composed of these MIME parts:
-
-### 1st MIME part
-* Human readable text which contains at least basic information about the reported incident
-* <code>Content-Type: text/plain</code>
-* <code>charset=utf-8</code>
-* MUST be present
-
-### 2nd MIME part
-* The data is a JSON object (a list of key/value pairs) represented in [YAML](http://www.yaml.org) notation. For a detailed list of mandatory and optional YAML keys, see [Appendix B](#appendix-b-content-of-the-2nd-mime-part-in-plain-context).
-* Receivers must be able to validate against the provided JSON scheme (see [X-ARF tools](http://www.x-arf.org/tools.html)).
-* Machine- and human-readable
-* <code>Content-Type: text/plain</code>
-* <code>charset=utf-8</code>
-* <code>name="report.txt"</code>
-* MUST be present
-
-### 3rd and additional MIME parts
-* Of any MIME types (which are specified in a referenced scheme)
-* Contains e.g. evidence which may be anonymized
-* Of any content
-* Optional or mandatory as defined in the corresponding scheme
-
-
-## Chapter 2: Secure X-ARF messages
-|Identifier|Scope|
-|----------|-----|
-|`X-XARF: SECURE`|optional implementation|
-
-To make signed or encrypted reports possible distinct content types are necessary. Therefore content types of `multipart/signed`, `multipart/encrypted`, or `application/pkcs7-mime` must be used for S/MIME or PGP/MIME secured X-ARF messages. This optional message format is explained below.
-
-In case of encrypted or signed reports the mandatory header fields must be conserved in one RFC2822 encapsulated container (`message/rfc822`) before signing
-or encrypting (more in [Appendix A](#appendix-a-rfc2822-container)).
-
-### Content-Type: multipart/signed
-An e-mail with content type of `multipart/signed` (RFC1847) describes a digitally signed message. The protocol type determines whether S/MIME (`application/pkcs7-signature`, RFC 5751) or PGP/MIME (`application/pgp-signature`, RFC3156) was used.
-
-### Content-Type: multipart/encrypted
-A `multipart/encrypted` content type (RFC1847) with protocol `application/pgp-encrypted` defines a PGP/MIME encrypted (RFC3156) abuse report. The encrypted content holds either the [RFC2822 container](#appendix-a-rfc2822-container) or a PGP/MIME signed message (see: content type `multipart/signed`, protocol type `application/pgp-signature`).
-
-### Content-Type: application/pkcs7-mime
-`application/pkcs7-mime` identifies an S/MIME encrypted message (RFC5751) of smime type enveloped-data. The encrypted content can either be the [RFC2822
-container](#appendix-a-rfc2822-container) or an S/MIME signed message with content type `multipart/signed` (see above: protocol `application/pkcs7-signature`).
-
-
-
-## Chapter 3: Bulk X-ARF messages
-|Identifier|Scope|
-|----------|-----|
-|`X-XARF: BULK`|optional implementation|
-
-Multiple abuse reports, each stored in [RFC2822 containers](#appendix-a-rfc2822-container), can fill separate `multipart/mixed` MIME parts -- even of different report types. This single X-ARF e-mail with one or more abuse reports is called and identified as `BULK`. It is neither signed nor encrypted. Because of the usage of RFC2822 containers all mandatory X-ARF e-mail headers per abuse report can be preserved (more about [RFC2822 container](#appendix-a-rfc2822-container)).
-
-As an abuse handler receives a bulk X-ARF message (s)he can extract single reports by iterating over all `multipart/mixed` MIME parts and re-injecting them into the import procedure separately.
-
-An encrypted and/or signed bulk message is possible via the [RFC2822 container](#appendix-a-rfc2822-container) holding an X-ARF secure message as described in [chapter 2](#chapter-2-secure-x-arf-messages) (`X-XARF: SECURE`).
-
-
-
-***
-
-## Appendix A: RFC2822 container
-RFC2822 containers (`message/rfc822`) are used in `SECURE` and `BULK` context to preserve all mandatory X-ARF header fields. Every X-ARF RFC2822 container must hold a
-completely valid X-ARF message which consists of any given X-ARF type (`PLAIN`, `SECURE` or `BULK`). The RFC2822 encapsulated message's MIME part is named `xarf.eml`. After the extraction of one single X-ARF message out of an RFC2822 container by either decryption, verifying or removing a signature or iteration over all bulk mime parts it can be re-injected into the default X-ARF import procedure.
-
-Although the usage of RFC2822 containers offers the possibility of cascaded X-ARF messages, for complexity reasons this is not recommended and should be solely used in mutual agreement of abuse reporter and recipient. Thus, in general the recursion of cascaded RFC2822 containers should not exceed depth 2 for signed or encrypted bulk messages and depth 1 otherwise. Furthermore, no bulk in a bulk container is allowed.
-
-
-
-## Appendix B: Content of the 2nd MIME part in `PLAIN` context
-Within the 2nd MIME part of a `PLAIN` X-ARF message, the following mandatory and optional fields are used. Furthermore, specific reports may use specific mandatory or optional fields.
-
-##### Reported-From: [mandatory][only once]
-
-This field contains the sender's identity, expressed as a URI.
-
-* Examples:
-** `Reported-From: mailto:reporter@example.com`
-** `Reported-From: tel:+15551234`
-** `Reported-Fro: sip:user@example.com`
-
-##### Category: [mandatory][only once]
-
-This field must contain one of the following categories:
-
-|Category|Explanation|
-|--------|-----------|
-|abuse|technical abusive behavior - any kinds of attacks like virus, malware, bot, logins, etc.|
-|fraud|financial abuse like creditcard-fraud, etc.|
-|auth|misuse or failure of authentification methods, SSL, SSH, POP3, etc.|
-|info|all sorts of pure informational reports like blacklistings, delistings|
-|private|all sorts of closed information exchange between 2 or more parties|
-
-Usually, this field will be defined by the X-ARF-community and the reporting party. 
-
-* Example: <code>Category: abuse</code> 
-
-##### Report-Type: [mandatory][only once]
-
-This field contains the type of report. For example login-attack, phishing-website, spamvertized, etc. Usually this field will be defined by X-ARF-community and the reporting party to make sure it has a unique meaning across all available schemas. 
-
-* Example: <code>Report-Type: login-attack</code>
-
-##### User-Agent: [mandatory][only once]
-
-Name and version of the generating software (see RFC1945 and RFC2068) 
-
-* Example: <code>User-Agent: xarf-reporter/1.0 (X-ARF Reporting Toolset v1.0)</code>
-
-##### Report-ID: [mandatory][only once]
-
-The Report-ID for a report containing (one) specific incident(s) must be unique across time and space, so that different receivers of (e.g. forwarded) reports are able to distinguish, compare and consolidate reports among themselves.
-
-The Report-ID SHOULD have a reasonable domain part. In some contexts, such as mobile messaging, there will not be an obvious domain name to use. In that case, the home network domain name (3GPP TS 23.003) SHOULD be used as the domain part.
-
-* It is recommended to use a combination of a (compact) UUID and your domain: <code>[any unique ID]@yourdomain.tld</code> 
-* Example: `Report-ID: e9e1fd60c855012f30ab60c5470a79c4@yourdomain.tld`
-
-##### Incident-Date: [mandatory][only once]
-
-This field contains the date of the incident itself, as best can be determined. The date should be in RFC 3339 format - if the x-arf schema specifies the date with "format":"date-time". Due to compatibility reasons the date may be written in the RFC2822 format, no matter if "format":"date-time" is used or not in a x-arf schema description. Therefore, parser implementations should check which of the both formats is used. 
-
-* Example (RFC2822 format): <code>Incident-Date: Mon, 05 Aug 2012 16:19:15 -0000</code> 
-* Example (RFC3339 format): <code>Incident-Date: 2012-04-12T23:20:50.52Z</code> 
-
-##### Report-Date: [mandatory][only once]
-
-This field contains the date when the report was generated. The date should be in RFC 3339 format - if the x-arf schema specifies the date with "format":"date-time". Due to compatibility reasons the date may be written in the RFC2822 format, no matter if "format":"date-time" is used or not in a x-arf schema description. Therefore, parser implementations should check which of the both formats is used. 
-
-* Example (RFC2822 format): <code>Report-Date: Mon, 05 Aug 2012 16:19:15 -0000</code> 
-* Example (RFC3339 format): <code>Report-Date: 2012-04-12T23:20:50.52Z</code> 
-
-##### Source: [mandatory][only once]
-
-Contains the source of abusive behavior. This SHOULD be a URI - e.g. HTTP URL, sip, tel, or mailto URI, etc. If the source is a host or IP address, the source SHOULD be expressed as a string similar to a URI, with a "scheme" followed by an address. In this form the "scheme" MUST be "host", "ipv4", or "ipv6", followed by a colon, followed by the IP address or host name, optionally followed by a colon and port number.
-
-* Examples: 
-  * `Source: ipv4:192.168.1.134`
-  * `Source: ipv4:192.168.1.134:9876`
-  * `Source: ipv6:2001:898:2000:c:213:206:89:190`
-  * `Source: https://www.domain.tld/folder/file.xxx`
-  * `Source: host:domain.tld`
-  * `Source: mailto:localpart@domain.tld`
-  * `Source: tel:+15559876`
-
-##### Attachment:
-
-Actually, I don't think we need this at all. If there are third and subsequent MIME parts, they are evidence.
-
-<strike>
-
-##### Attachment: [mandatory][only once]
-This field defines whether an attachment with further information exists or not. If no such attachments exists, this field has to be set to "none". If an attachment exists, this field must contain the MIME type of the following attachment. 
-
-* Example: <code>Attachment: text/plain</code> 
-</strike>
-
-##### Schema-URL: [mandatory][only once]
-
-This field contains the URI to the JSON-schema that describes the content of the report. The schema must be published under and the URI must point to the www.x-arf.org domain. If <Category:> is set to private the schema may be published according to what the involved parties agreed upon. 
-
-* Example: <code>Schema-URL: http://www.x-arf.org/schema/abuse_login-attack_0.1.2.json</code>
-
-##### Version: [optional][only once]
-
-This field contains the version of this specification.  
-*The current version number is 0.2*
-
-* Example: <code>Version: 0.2</code> 
-
-##### Occurrences: [optional][only once]
-
-In many cases, an incident will occur some number of times over some period - for example, an attacker may attempt a brute-force login attack against some server. `Occurrences` expresses how many substantially-identical instances of abuse occurred.
-
-* Example: <code>Occurrences: 6</code> 
-
-##### Incident-Lifetime: [optional][only once]
-
-In many cases, an incident will occur some number of times over some period - for example, an attacker may attempt a brute-force login attack against some server. `Incident-Lifetime` expresses the time period over which the abuse occurred. It expresses an amount of time in seconds, hours, or days.
-
-* Examples:
-    * `Incident-Lifetime: 500 seconds`
-    * `Incident-Lifetime: 3 days`
-
-##### TLP: [optional][only once]
-
-This field may be used to indicate the sensitivity of the information in the report.
-Please see the [definition of Information Sharing Traffic Light Protocol](http://www.trusted-introducer.org/ISTLPv11.pdf).   
- 
-* Example: <code>TLP: amber</code>   
-
-
-## Appendix C: Visualisation of X-ARF messages
 ### `X-XARF: PLAIN`
 A default plain message with a 3rd MIME part will look like:
 
 ![X-XARF PLAIN example](https://raw.github.com/abusix/xarf-specification/master/examples/v0.2/xarf-specification_0.2.x-xarf-plain.png)
 
-### `X-XARF: SECURE`
-A digitally PGP/MIME signed message with its RFC 2822 container is illustrated by the following image:
-
-![X-XARF SECURE example with PGP/MIME signed RFC 2822 container](https://raw.github.com/abusix/xarf-specification/master/examples/v0.2/xarf-specification_0.2.x-xarf-secure-rfc822-container-pgpmime-signed.png)
-
-### `X-XARF: BULK`
-An example bulk message including two plain reports in RFC 2822 containers is represented by the following image:
-
-![X-XARF BULK example containing two PLAIN messages](https://raw.github.com/abusix/xarf-specification/master/examples/v0.2/xarf-specification_0.2.x-xarf-bulk-rfc822-container.png)
-
-***
-
-*There are already some containers in use that have been designed by the community. If you have ideas for optional fields in existing containers or ideas for completely new containers, please join the X-ARF [mailinglist](http://lists.x-arf.org/cgi-bin/mailman/listinfo/).*
